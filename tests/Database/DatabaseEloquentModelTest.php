@@ -147,6 +147,18 @@ class DatabaseEloquentModelTest extends PHPUnit_Framework_TestCase
         $this->assertEmpty($instance->getEagerLoads());
     }
 
+    public function testEagerLoadingWithColumns()
+    {
+        $model = new EloquentModelWithoutRelationStub;
+        $instance = $model->newInstance()->newQuery()->with('foo:bar,baz', 'hadi');
+        $builder = m::mock(Builder::class);
+        $builder->shouldReceive('select')->once()->with(['bar', 'baz']);
+        $this->assertNotNull($instance->getEagerLoads()['hadi']);
+        $this->assertNotNull($instance->getEagerLoads()['foo']);
+        $closure = $instance->getEagerLoads()['foo'];
+        $closure($builder);
+    }
+
     public function testWithMethodCallsQueryBuilderCorrectlyWithArray()
     {
         $result = EloquentModelWithStub::with(['foo', 'bar']);
@@ -193,23 +205,6 @@ class DatabaseEloquentModelTest extends PHPUnit_Framework_TestCase
         $model->updated_at = 'bar';
         $model->exists = true;
         $this->assertTrue($model->save());
-    }
-
-    public function testSaveDoesntUpateTimestampsIfTouchOptionDisabled()
-    {
-        $model = $this->getMockBuilder('EloquentModelStub')->setMethods(['newQueryWithoutScopes', 'updateTimestamps', 'fireModelEvent'])->getMock();
-        $query = m::mock('Illuminate\Database\Eloquent\Builder');
-        $query->shouldReceive('where')->once()->with('id', '=', 1);
-        $query->shouldReceive('update')->once()->with(['name' => 'taylor'])->andReturn(1);
-        $model->expects($this->once())->method('newQueryWithoutScopes')->will($this->returnValue($query));
-        $model->expects($this->never())->method('updateTimestamps');
-        $model->expects($this->any())->method('fireModelEvent')->will($this->returnValue(true));
-
-        $model->id = 1;
-        $model->syncOriginal();
-        $model->name = 'taylor';
-        $model->exists = true;
-        $this->assertTrue($model->save(['touch' => false]));
     }
 
     public function testSaveIsCancelledIfSavingEventReturnsFalse()
@@ -792,6 +787,25 @@ class DatabaseEloquentModelTest extends PHPUnit_Framework_TestCase
     {
         $model = (new EloquentModelSaveStub)->forceFill(['id' => 21]);
         $this->assertEquals(21, $model->id);
+    }
+
+    public function testFillingJSONAttributes()
+    {
+        $model = new EloquentModelStub;
+        $model->fillable(['meta->name', 'meta->price', 'meta->size->width']);
+        $model->fill(['meta->name' => 'foo', 'meta->price' => 'bar', 'meta->size->width' => 'baz']);
+        $this->assertEquals(
+            ['meta' => json_encode(['name' => 'foo', 'price' => 'bar', 'size' => ['width' => 'baz']])],
+            $model->toArray()
+        );
+
+        $model = new EloquentModelStub(['meta' => json_encode(['name' => 'Taylor'])]);
+        $model->fillable(['meta->name', 'meta->price', 'meta->size->width']);
+        $model->fill(['meta->name' => 'foo', 'meta->price' => 'bar', 'meta->size->width' => 'baz']);
+        $this->assertEquals(
+            ['meta' => json_encode(['name' => 'foo', 'price' => 'bar', 'size' => ['width' => 'baz']])],
+            $model->toArray()
+        );
     }
 
     public function testUnguardAllowsAnythingToBeSet()

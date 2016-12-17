@@ -921,6 +921,17 @@ class RoutingRouteTest extends PHPUnit_Framework_TestCase
 
         $this->assertEquals('foo-bars/{foo_bar}', $routes[0]->getUri());
         $this->assertEquals('prefix.foo-bars.show', $routes[0]->getName());
+
+        ResourceRegistrar::verbs([
+            'create' => 'ajouter',
+            'edit' => 'modifier',
+        ]);
+        $router = $this->getRouter();
+        $router->resource('foo', 'FooController');
+        $routes = $router->getRoutes();
+
+        $this->assertEquals('foo/ajouter', $routes->getByName('foo.create')->getUri());
+        $this->assertEquals('foo/{foo}/modifier', $routes->getByName('foo.edit')->getUri());
     }
 
     public function testResourceRoutingParameters()
@@ -1008,6 +1019,17 @@ class RoutingRouteTest extends PHPUnit_Framework_TestCase
 
         $this->assertTrue($router->getRoutes()->hasNamedRoute('foo'));
         $this->assertTrue($router->getRoutes()->hasNamedRoute('bar'));
+
+        $router = $this->getRouter();
+        $router->resource('foo', 'FooController', ['names' => 'bar']);
+
+        $this->assertTrue($router->getRoutes()->hasNamedRoute('bar.index'));
+        $this->assertTrue($router->getRoutes()->hasNamedRoute('bar.show'));
+        $this->assertTrue($router->getRoutes()->hasNamedRoute('bar.create'));
+        $this->assertTrue($router->getRoutes()->hasNamedRoute('bar.store'));
+        $this->assertTrue($router->getRoutes()->hasNamedRoute('bar.edit'));
+        $this->assertTrue($router->getRoutes()->hasNamedRoute('bar.update'));
+        $this->assertTrue($router->getRoutes()->hasNamedRoute('bar.destroy'));
     }
 
     public function testRouterFiresRoutedEvent()
@@ -1131,6 +1153,25 @@ class RoutingRouteTest extends PHPUnit_Framework_TestCase
             $phpunit->assertNull($foo->value);
         });
         $router->dispatch(Request::create('bar', 'GET'))->getContent();
+    }
+
+    public function testImplicitBindingThroughIOC()
+    {
+        $phpunit = $this;
+        $container = new Container;
+        $router = new Router(new Dispatcher, $container);
+        $container->singleton(Registrar::class, function () use ($router) {
+            return $router;
+        });
+
+        $container->bind('RoutingTestUserModel', 'RoutingTestExtendedUserModel');
+        $router->get('foo/{bar}', [
+            'middleware' => SubstituteBindings::class,
+            'uses' => function (RoutingTestUserModel $bar) use ($phpunit) {
+                $phpunit->assertInstanceOf(RoutingTestExtendedUserModel::class, $bar);
+            },
+        ]);
+        $router->dispatch(Request::create('foo/baz', 'GET'))->getContent();
     }
 
     public function testDispatchingCallableActionClasses()
@@ -1366,6 +1407,10 @@ class RoutingTestUserModel extends Model
     {
         return $this;
     }
+}
+
+class RoutingTestExtendedUserModel extends RoutingTestUserModel
+{
 }
 
 class ActionStub
